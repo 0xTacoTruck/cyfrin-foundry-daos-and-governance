@@ -10,6 +10,18 @@ The learning journey has been incredible and each time I discover or learn somet
 
 With all that being said, we aren't there yet and right now we get to take a look at DAOs!
 
+## This Project DAO Overview
+
+Our DAO is going to be ERC20 token, plutocracy based governance. As we will mention below, this is really not the best way of designing a DAO and its governance due to the risk of enabling the wealthy to have mroe voting power. However, for the purpose of this lesson this is the approach we are going to use to help us learn more about DAOs.
+
+This is a fairly brief lesson and I find the topic super interesting and will spend more time learning about DAOs at the completion of this course to get a better grasp of the topic. I encourage you to do the same.
+
+### Project DAO Features
+
+1. We are going to have a contract that is controlled by a DAO
+2. Every transaction the DAO wants to send has to be voted on
+3. We will use ERC20 tokens for voting - our own ERC20 token (again, highlighting the importance of this not being great due to risks)
+
 
 ## Introduction to DAOs
 
@@ -45,7 +57,7 @@ We just briefly went over Compound and its governance operations and metnioned h
 The voting mechanism chosen in a DAO needs to be carefully considered. There are multiple ways to design and implement voting mechanisms, but there are positives and negatives that need to be considered.
 
 #### EERC20 Tokens and NFTs
-An easy way to implement voting for users is to use an ERC20 token - like compound, or an NFT as voting power, to enable the ability to vote. Now while this can be the right solution for a DAO and a protocol, it also runs the risk of actually making it more unfair if the voting mechanism is poorly designed and allows the very wealthy to overpower the voting power of everyone else - e.g. a whale buys a HUGE amount of tokens used for voting, they can then vote on proposals as the dominant factor. To put it simply, you could enable a voting mechanism based on 'whoever has the deepest pockets gets to pick teh changes'. The other factort to consider on this point is that of a security threat, if a bad actor was to gain a dominant voting power and propose a bad and malicious proposal that drains the protocol, the attacker could vote and pass the proposal that they create.
+An easy way to implement voting for users is to use an ERC20 token - like compound, or an NFT as voting power, to enable the ability to vote. Now while this can be the right solution for a DAO and a protocol, it also runs the risk of actually making it more unfair if the voting mechanism is poorly designed and allows the very wealthy to overpower the voting power of everyone else - e.g. a whale buys a HUGE amount of tokens used for voting, they can then vote on proposals as the dominant factor. To put it simply, you could enable a voting mechanism based on 'whoever has the deepest pockets gets to pick the changes'. The other factort to consider on this point is that of a security threat, if a bad actor was to gain a dominant voting power and propose a bad and malicious proposal that drains the protocol, the attacker could vote and pass the proposal that they create.
 
 NFTs also present the same issues as ERC20s too.
 
@@ -91,3 +103,165 @@ There are several no-code solutions and more tech-focused tools to help you buil
 "Before wrapping up, it's essential to touch briefly on the legal aspects of DAOs. DAOs are in a gray area operationally, with the state of Wyoming in the United States being the only state where a DAO can be legally recognized. Read up on the legal implications before you dive into creating your DAO" - Patrick Collins, Cyfrin
 
 See how would you force a DAO to do something? You can just tell eveyone that they have to vote in a direction of something? Its all new and intersting and if planning on launching something in production then you should be aware of these things.
+
+## DAOs Tooling - Introduction to Aragon
+
+[Aragon](https://app.aragon.org/) is ano code solution that can help you create a DAO. It allows an extremely simple way to generate the smart contracts required to launch a DAO.
+
+You can select what blockchain to use, provide the DAOs name, ENS subdomain, logo, description any additional links. It allows users to select who and how parties can participate - token holders or multisig members. It can even allow a very simplified token distribution as part of the set up.
+
+It also provides prompts on how you would like proposals to be created and what things are required to make the proposal - e.g token holders vs anyone, minimum token amount to propose, etc.
+
+Fo goverance settings, they even allow you to select what support threshold you would like for deciding to pass or reject a proposal, as well as the minimum participation required for the proposal to be valid - e.g. 15% of all token supply.
+
+You can decide the minimum amount of time that a proposal should be open for voting - e.g. 1 day, 1 hour, 1 minute.
+
+Whether to execute early if the proposal threhold requirements are already met.
+
+Would you like users to be able to change their votes during the voting period or have the votes fixed to the end of the voting period.
+
+The application website also allows you to interact with the DAOs, where you can do things like: make a proposal, make a treasury deposit, and view your voting power.
+
+## The DAO in this Project
+
+I want to highlight that we are leveraging a lot of the coding work from Open Zeppelin and therfore it is difficult to write in a bunch of information of how to programmatically code certain functions/features in great detail. Instead, what I will do is write what I think are interesting or key to understanding.
+
+### Ownership
+
+Its important to make the distinction between the governance of the DAO and the protocol itself. The are two separate things and are deployed separately on-chain. The most important thing to implement is ownership over the protocol.
+
+By using the Open Zeppelin Ownable import we can assign ownership to the DAO. Initially, ownership will belong to us but we can then call the transferOwnership function to give ownership to the DAO contract.
+
+### How the Proposal contains what we want to protocol to do
+
+If we look inside the Open Zeppelin Governor.sol file, we will see the propose function:
+
+```
+ /**
+* @dev See {IGovernor-propose}. This function has opt-in frontrunning protection, described in {_isValidDescriptionForProposer}.
+*/
+function propose(
+    address[] memory targets,
+    uint256[] memory values,
+    bytes[] memory calldatas,
+    string memory description
+) public virtual returns (uint256) {
+    address proposer = _msgSender();
+
+    // check description restriction
+    if (!_isValidDescriptionForProposer(proposer, description)) {
+        revert GovernorRestrictedProposer(proposer);
+    }
+
+    // check proposal threshold
+    uint256 proposerVotes = getVotes(proposer, clock() - 1);
+    uint256 votesThreshold = proposalThreshold();
+    if (proposerVotes < votesThreshold) {
+        revert GovernorInsufficientProposerVotes(proposer, proposerVotes, votesThreshold);
+    }
+
+    return _propose(targets, values, calldatas, description, proposer);
+}
+```
+
+We can see a number of different paramater input variables that make up the proposal function, we will quickly cover them here:
+
+- targets
+  - What addresses are needed to be used for this proposal's transaction/s to be executed --> will it be more than 1 transaction?
+  - Can be 1 or more target addresses --> [0x28747df3, 0x26709ac3]
+- values
+  - What value do we need to pass when we interact with one of the target addresses detailed above as part of each transaction
+  - Can be 1 or more values --> [0, 150]
+- calldatas
+  - The bytes data that we are sending to the addresses detailed above. Now we know about function selectors, function sigantures and stuff, we can understand how we can have the DAO call any function and send any data that we want to or need to for the provided target address/smart contract
+- description
+  - This is just for the internal state of the Governor
+  - e.g. "Proposal to mint 100 tokens" or "proposal to pay for security services provided by Steve Inc"
+
+### Execute Function
+
+The execute function is used to execute the proposal. It accepts the same paramters as the propose function. It will cary out checks to ensure we can execute the proposal correctly before calling an internal _execute function.
+
+The execute function looks like this:
+```
+/**
+    * @dev Internal execution mechanism. Can be overridden (without a super call) to modify the way execution is
+    * performed (for example adding a vault/timelock).
+    *
+    * NOTE: Calling this function directly will NOT check the current state of the proposal, set the executed flag to
+    * true or emit the `ProposalExecuted` event. Executing a proposal should be done using {execute} or {_execute}.
+    */
+function _executeOperations(
+    uint256 /* proposalId */,
+    address[] memory targets,
+    uint256[] memory values,
+    bytes[] memory calldatas,
+    bytes32 /*descriptionHash*/
+) internal virtual {
+    for (uint256 i = 0; i < targets.length; ++i) {
+        (bool success, bytes memory returndata) = targets[i].call{value: values[i]}(calldatas[i]);
+        Address.verifyCallResult(success, returndata);
+    }
+}
+```
+
+We can see how we can have multiple targets, values and calldats to be executed and how we actually execute the proposal. Before calling this internal function the normal execute function hashes the description that was provided, then the internal has the description hash param input but it is commented out and therfore not used. I think this idea of making proposals and then being able to execute the proposals is super interesting and cool - all done programmatically, sickkkk.
+
+### Timelock Controller
+
+For our project, we decided that we wanted to incorporate a timelock on executing successful proposals to allow time for users to leave the DAO if they so wish, or to allow for any emergency actions to take place.
+
+The GovernorTimelockControl.sol file that contains the logic for handling such operations. The following is an excerpt from the file:
+
+```
+/**
+ * @dev Extension of {Governor} that binds the execution process to an instance of {TimelockController}. This adds a
+ * delay, enforced by the {TimelockController} to all successful proposal (in addition to the voting duration). The
+ * {Governor} needs the proposer (and ideally the executor) roles for the {Governor} to work properly.
+ *
+ * Using this model means the proposal will be operated by the {TimelockController} and not by the {Governor}. Thus,
+ * the assets and permissions must be attached to the {TimelockController}. Any asset sent to the {Governor} will be
+ * inaccessible from a proposal, unless executed via {Governor-relay}.
+ *
+ * WARNING: Setting up the TimelockController to have additional proposers or cancellers besides the governor is very
+ * risky, as it grants them the ability to: 1) execute operations as the timelock, and thus possibly performing
+ * operations or accessing funds that are expected to only be accessible through a vote, and 2) block governance
+ * proposals that have been approved by the voters, effectively executing a Denial of Service attack.
+ .......
+ .......
+ */
+```
+
+Essentially what it is saying is that we need a TimelockController contract that is deployed to actually be the owner of the Governor contract so that we can carry out these sort of operations, and that the governor needs to be designed in a way that allows the execution of the proposal to be delayed for a set amount of time to be carried out by the timelockcontrol contract.
+
+Thankfully Open Zeppelin also have us covered for a TimelockController contract and the following is taken from TimelockController.sol:
+```
+/**
+ * @dev Contract module which acts as a timelocked controller. When set as the
+ * owner of an `Ownable` smart contract, it enforces a timelock on all
+ * `onlyOwner` maintenance operations. This gives time for users of the
+ * controlled contract to exit before a potentially dangerous maintenance
+ * operation is applied.
+ *
+ * By default, this contract is self administered, meaning administration tasks
+ * have to go through the timelock process. The proposer (resp executor) role
+ * is in charge of proposing (resp executing) operations. A common use case is
+ * to position this {TimelockController} as the owner of a smart contract, with
+ * a multisig or a DAO as the sole proposer.
+ */
+```
+
+
+## Useful Links for Further Reading and Learning
+
+[OpenZeppelin Forum - what-is-votecastbysig](https://forum.openzeppelin.com/t/what-is-votecastbysig/17069/2)
+
+[Compound - Governance](https://compound.finance/governance)
+
+[Maker DAO - Governance Page](https://vote.makerdao.com/)
+
+[Vitalik - Plutocracy is still bad, 2018](https://vitalik.eth.limo/general/2018/03/28/plutocracy.html)
+
+[Vitalik - DAOs are not corporations, 2022](https://vitalik.eth.limo/general/2022/09/20/daos.html)
+
+[Vitalik's Website full of articles](https://vitalik.eth.limo/)
